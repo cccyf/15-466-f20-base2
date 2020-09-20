@@ -38,6 +38,8 @@ Load< Scene > hexapod_scene(LoadTagDefault, []() -> Scene const * {
 });
 
 PlayMode::PlayMode() : scene(*hexapod_scene) {
+	srand (time(NULL));
+	
 	serve_food_text_index = text_list.size();
 	text_list.emplace_back("Press W to serve foods");
 	
@@ -228,6 +230,20 @@ void PlayMode::update(float elapsed) {
 		return;
 	}
 
+	// wiping
+	if (wipe->position != wipe_original_pos)
+	{
+		if (wipe_time > duration_limit)
+		{
+			wipe->position = wipe_original_pos;
+			wipe_time = 0.f;
+		}else{
+			wipe->position.z += wipe_speed * elapsed;
+			wipe_time += elapsed;
+		}
+		return;
+	}
+
 	// serve food
 	if (up.pressed && cur_object != nullptr && cur_object->name != "" && cur_object->name.compare("dirty_plate") != 0)
 	{
@@ -269,20 +285,6 @@ void PlayMode::update(float elapsed) {
 	&& is_front == 1)
 	{
 		finish_duration = 0.f;
-		return;
-	}
-	
-	// wiping
-	if (wipe->position != wipe_original_pos)
-	{
-		if (wipe_time > duration_limit)
-		{
-			wipe->position = wipe_original_pos;
-			wipe_time = 0.f;
-		}else{
-			wipe->position.z += wipe_speed * elapsed;
-			wipe_time += elapsed;
-		}
 		return;
 	}
 	
