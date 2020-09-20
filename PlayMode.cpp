@@ -7,6 +7,7 @@
 #include "Load.hpp"
 #include "gl_errors.hpp"
 #include "data_path.hpp"
+#include <string>
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -14,13 +15,13 @@
 
 GLuint hexapod_meshes_for_lit_color_texture_program = 0;
 Load< MeshBuffer > hexapod_meshes(LoadTagDefault, []() -> MeshBuffer const * {
-	MeshBuffer const *ret = new MeshBuffer(data_path("hexapod.pnct"));
+	MeshBuffer const *ret = new MeshBuffer(data_path("brunch.pnct"));
 	hexapod_meshes_for_lit_color_texture_program = ret->make_vao_for_program(lit_color_texture_program->program);
 	return ret;
 });
 
 Load< Scene > hexapod_scene(LoadTagDefault, []() -> Scene const * {
-	return new Scene(data_path("hexapod.scene"), [&](Scene &scene, Scene::Transform *transform, std::string const &mesh_name){
+	return new Scene(data_path("brunch.scene"), [&](Scene &scene, Scene::Transform *transform, std::string const &mesh_name){
 		Mesh const &mesh = hexapod_meshes->lookup(mesh_name);
 
 		scene.drawables.emplace_back(transform);
@@ -37,19 +38,46 @@ Load< Scene > hexapod_scene(LoadTagDefault, []() -> Scene const * {
 });
 
 PlayMode::PlayMode() : scene(*hexapod_scene) {
+	serve_food_text_index = text_list.size();
+	text_list.emplace_back("Press W to serve foods");
+	
+	wipe_plate_text_index = text_list.size();
+	text_list.emplace_back("Press SPACE to wipe the plate; Press D to flip the plate; Press A to finish");
+
+
 	//get pointers to leg for convenience:
 	for (auto &transform : scene.transforms) {
-		if (transform.name == "Hip.FL") hip = &transform;
-		else if (transform.name == "UpperLeg.FL") upper_leg = &transform;
-		else if (transform.name == "LowerLeg.FL") lower_leg = &transform;
+		if (transform.name.compare("oil.1") == 0)
+		{
+			front_oil = &transform;
+			front_oil_pos = transform.position;
+		}else if (transform.name.compare("oil.2") == 0)
+		{
+			back_oil = &transform;
+			back_oil_pos = transform.position;
+		}
+		if (transform.name.compare("wipe") == 0)
+		{
+			wipe_original_pos = transform.position;
+			wipe = &transform;
+			continue;
+		}
+		if (transform.parent == nullptr || transform.parent->name.compare("table") != 0)
+		{	
+			continue;
+		}
+		if (transform.name.compare("plant vase") == 0 || transform.name.compare("cactus") == 0)
+		{
+			continue;
+		}
+		if (transform.name.compare("dirty_plate") == 0)
+		{
+			plate_original_rotation = transform.rotation;
+		}
+		
+		plates_on_table.emplace_back(&transform);
+		transform.position += pos_ofs;
 	}
-	if (hip == nullptr) throw std::runtime_error("Hip not found.");
-	if (upper_leg == nullptr) throw std::runtime_error("Upper leg not found.");
-	if (lower_leg == nullptr) throw std::runtime_error("Lower leg not found.");
-
-	hip_base_rotation = hip->rotation;
-	upper_leg_base_rotation = upper_leg->rotation;
-	lower_leg_base_rotation = lower_leg->rotation;
 
 	//get pointer to camera for convenience:
 	if (scene.cameras.size() != 1) throw std::runtime_error("Expecting scene to have exactly one camera, but it has " + std::to_string(scene.cameras.size()));
@@ -81,7 +109,12 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			down.downs += 1;
 			down.pressed = true;
 			return true;
+		} else if (evt.key.keysym.sym == SDLK_SPACE)
+		{
+			space.pressed = true;
+			return true;
 		}
+		
 	} else if (evt.type == SDL_KEYUP) {
 		if (evt.key.keysym.sym == SDLK_a) {
 			left.pressed = false;
@@ -95,76 +128,169 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		} else if (evt.key.keysym.sym == SDLK_s) {
 			down.pressed = false;
 			return true;
-		}
-	} else if (evt.type == SDL_MOUSEBUTTONDOWN) {
-		if (SDL_GetRelativeMouseMode() == SDL_FALSE) {
-			SDL_SetRelativeMouseMode(SDL_TRUE);
+		}else if(evt.key.keysym.sym == SDLK_SPACE){
+			space.pressed = false;
 			return true;
 		}
-	} else if (evt.type == SDL_MOUSEMOTION) {
-		if (SDL_GetRelativeMouseMode() == SDL_TRUE) {
-			glm::vec2 motion = glm::vec2(
-				evt.motion.xrel / float(window_size.y),
-				-evt.motion.yrel / float(window_size.y)
-			);
-			camera->transform->rotation = glm::normalize(
-				camera->transform->rotation
-				* glm::angleAxis(-motion.x * camera->fovy, glm::vec3(0.0f, 1.0f, 0.0f))
-				* glm::angleAxis(motion.y * camera->fovy, glm::vec3(1.0f, 0.0f, 0.0f))
-			);
-			return true;
-		}
-	}
+	} 
 
 	return false;
 }
 
 void PlayMode::update(float elapsed) {
 
-	//slowly rotates through [0,1):
-	wobble += elapsed / 10.0f;
-	wobble -= std::floor(wobble);
-
-	hip->rotation = hip_base_rotation * glm::angleAxis(
-		glm::radians(5.0f * std::sin(wobble * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 1.0f, 0.0f)
-	);
-	upper_leg->rotation = upper_leg_base_rotation * glm::angleAxis(
-		glm::radians(7.0f * std::sin(wobble * 2.0f * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 0.0f, 1.0f)
-	);
-	lower_leg->rotation = lower_leg_base_rotation * glm::angleAxis(
-		glm::radians(10.0f * std::sin(wobble * 3.0f * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 0.0f, 1.0f)
-	);
-
-	//move camera:
+	if (cur_object == nullptr || finish_duration >= duration_limit)
 	{
+		if (cur_object)
+		{
+			cur_object->position += pos_ofs;
+			if (cur_object->name.compare("dirty_plate") != 0)
+			{
+				cur_object->position -= finish_duration * move_speed;
+			}else{
+				cur_object->position -= finish_duration * plate_move_speed;
+				cur_object->rotation = plate_original_rotation;
+			}
 
-		//combine inputs into a move:
-		constexpr float PlayerSpeed = 30.0f;
-		glm::vec2 move = glm::vec2(0.0f);
-		if (left.pressed && !right.pressed) move.x =-1.0f;
-		if (!left.pressed && right.pressed) move.x = 1.0f;
-		if (down.pressed && !up.pressed) move.y =-1.0f;
-		if (!down.pressed && up.pressed) move.y = 1.0f;
+			front_oil_count = 1;
+			back_oil_count = 1;
+			front_oil->position = front_oil_pos;
+			back_oil->position = back_oil_pos;
+		}
 
-		//make it so that moving diagonally doesn't go faster:
-		if (move != glm::vec2(0.0f)) move = glm::normalize(move) * PlayerSpeed * elapsed;
+		int rand = random() % plates_on_table.size();
+		auto trans_it = plates_on_table.begin();
+		std::advance(trans_it, rand);
+		cur_object = (*trans_it);
+		plate_base_rotation = cur_object->rotation;
 
-		glm::mat4x3 frame = camera->transform->make_local_to_parent();
-		glm::vec3 right = frame[0];
-		//glm::vec3 up = frame[1];
-		glm::vec3 forward = -frame[2];
+		cur_object->position -= pos_ofs;
 
-		camera->transform->position += move.x * right + move.y * forward;
+		rand = random() % 4;
+		if (rand==0)
+		{
+			front_oil_count = 0;
+			back_oil_count = 0;
+			front_oil->position += pos_ofs;
+			back_oil->position += pos_ofs;
+		}else if (rand == 1)
+		{
+			front_oil_count = 1;
+			back_oil_count = 0;
+			back_oil->position += pos_ofs;
+		}else if (rand == 2)
+		{
+			back_oil_count = 1;
+			front_oil_count = 0;
+			front_oil->position += pos_ofs;
+		}
+
+		finish_duration = -1.f;
+		rotate_plate = -1.f;
+
+		if (cur_object->name.compare("dirty_plate") == 0)
+		{
+			text_index = wipe_plate_text_index;
+		}else{
+			text_index = serve_food_text_index;
+		}
+		
+		is_front = 1;
+
+		return;
+	}
+	
+	if (finish_duration >= 0.f && finish_duration < duration_limit)
+	{
+		finish_duration += elapsed;
+		if (cur_object->name.compare("dirty_plate") != 0)
+		{
+			cur_object->position += elapsed * move_speed;
+		}else{
+			cur_object->position += elapsed * plate_move_speed;
+		}
+		return;
 	}
 
+	if (rotate_plate >= 0.f)
+	{
+		rotate_plate += elapsed * 200.f;
+		rotate_plate = (rotate_plate >= 180.f) ? 180.f : rotate_plate;
+		cur_object->rotation = plate_base_rotation * glm::angleAxis(
+			glm::radians(rotate_plate),
+			glm::vec3(1.0f, 0.f, 0.f)
+		);
+		if (rotate_plate >= 180.f)
+		{
+			rotate_plate = -1.f;
+			plate_base_rotation = cur_object->rotation;
+		}
+		return;
+	}
+
+	// serve food
+	if (up.pressed && cur_object != nullptr && cur_object->name != "" && cur_object->name.compare("dirty_plate") != 0)
+	{
+		finish_duration = 0.f;
+		credit += 1;
+		return;
+	}
+
+	if (down.pressed && rotate_plate < 0.f && cur_object != nullptr && cur_object->name != ""  && cur_object->name.compare("dirty_plate") == 0)
+	{
+		rotate_plate = 0.f;
+		is_front = is_front ? 0 : 1;
+		return;
+	}
+
+	if (space.pressed && wipe->position == wipe_original_pos && cur_object->name.compare("dirty_plate") == 0)
+	{
+		wipe->position = wipe_start_pos;
+		wipe->position = cur_object->position + wipe_ofs;
+		if (is_front)
+		{
+			if (front_oil_count)
+			{
+				front_oil_count = 0;
+				front_oil->position += pos_ofs;
+			}
+		}else{
+			if (back_oil_count)
+			{
+				back_oil_count = 0;
+				back_oil->position += pos_ofs;
+			}
+		}
+		return;
+	}
+
+	if (left.pressed && finish_duration < 0.f && wipe->position == wipe_original_pos 
+	&& cur_object->name.compare("dirty_plate") == 0 && front_oil_count == 0 && back_oil_count == 0 
+	&& is_front == 1)
+	{
+		finish_duration = 0.f;
+		return;
+	}
+	
+	// wiping
+	if (wipe->position != wipe_original_pos)
+	{
+		if (wipe_time > duration_limit)
+		{
+			wipe->position = wipe_original_pos;
+			wipe_time = 0.f;
+		}else{
+			wipe->position.z += wipe_speed * elapsed;
+			wipe_time += elapsed;
+		}
+		return;
+	}
+	
 	//reset button press counters:
-	left.downs = 0;
-	right.downs = 0;
-	up.downs = 0;
-	down.downs = 0;
+	left.pressed = false;
+	right.pressed = false;
+	up.pressed = false;
+	down.pressed = false;
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
@@ -202,14 +328,26 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		));
 
 		constexpr float H = 0.09f;
-		lines.draw_text("Mouse motion rotates camera; WASD moves; escape ungrabs mouse",
-			glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H, 0.0),
-			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
+		lines.draw_text(text_list[text_index],
+			glm::vec3(-aspect + 0.1f * 1.2 * H, -1.0 + 0.1f * 1.2 * H, 0.0),
+			glm::vec3(1.2 * H, 0.0f, 0.0f), glm::vec3(0.0f, 1.2 * H, 0.0f),
 			glm::u8vec4(0x00, 0x00, 0x00, 0x00));
+
 		float ofs = 2.0f / drawable_size.y;
-		lines.draw_text("Mouse motion rotates camera; WASD moves; escape ungrabs mouse",
-			glm::vec3(-aspect + 0.1f * H + ofs, -1.0 + + 0.1f * H + ofs, 0.0),
-			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
+		lines.draw_text(text_list[text_index],
+			glm::vec3(-aspect + 0.1f * 1.2 * H + ofs, -1.0 + + 0.1f * 1.2 * H + ofs, 0.0),
+			glm::vec3(1.2 * H, 0.0f, 0.0f), glm::vec3(0.0f, 1.2 * H, 0.0f),
+			glm::u8vec4(0xff, 0xff, 0xff, 0x00));
+
+		std::string cur_credit = "Credits: " + std::to_string(credit);
+		lines.draw_text(cur_credit,
+			glm::vec3(-aspect + 0.2f * 1.5 * H, -1.0 + 2.f * H, 0.0),
+			glm::vec3(1.5 * H, 0.0f, 0.0f), glm::vec3(0.0f, 1.5 * H, 0.0f),
+			glm::u8vec4(0x00, 0x00, 0x00, 0x00));
+		
+		lines.draw_text(cur_credit,
+			glm::vec3(-aspect + 0.2f * 1.5 * H + ofs, -1.0 + + 2.f * H + ofs, 0.0),
+			glm::vec3(1.5 * H, 0.0f, 0.0f), glm::vec3(0.0f, 1.5 * H, 0.0f),
 			glm::u8vec4(0xff, 0xff, 0xff, 0x00));
 	}
 }
