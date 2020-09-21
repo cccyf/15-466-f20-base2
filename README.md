@@ -1,8 +1,10 @@
-# (TODO: your game's title)
+# Work in Restaurant
 
-Author: (TODO: your name)
+Author: YF
 
-Design: (TODO: In two sentences or fewer, describe what is new and interesting about your game.)
+Design: 
+
+- What's it like working at a restaurant? You need to decide what to do and respond quickly when you see the dishes.
 
 Screen Shot:
 
@@ -10,9 +12,12 @@ Screen Shot:
 
 How To Play:
 
-(TODO: describe the controls and (if needed) goals/strategy.)
+- Press W to serve foods.
+- Press SPACE to wipe the stain. Press S to check the back of the dish. Press A to finish the dish.
 
-Sources: (TODO: list a source URL for any assets you did not create yourself. Make sure you have a license for the asset.)
+Sources:
+
+- brunch.blend -- Yixin He. may be used/modified under a Creative Commons Attribution license.
 
 This game was built with [NEST](NEST.md).
 

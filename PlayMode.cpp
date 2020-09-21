@@ -160,27 +160,27 @@ void PlayMode::update(float elapsed) {
 			back_oil->position = back_oil_pos;
 		}
 
-		int rand = random() % plates_on_table.size();
+		int rand_p = rand() % plates_on_table.size();
 		auto trans_it = plates_on_table.begin();
-		std::advance(trans_it, rand);
+		std::advance(trans_it, rand_p);
 		cur_object = (*trans_it);
 		plate_base_rotation = cur_object->rotation;
 
 		cur_object->position -= pos_ofs;
 
-		rand = random() % 4;
-		if (rand==0)
+		rand_p = rand() % 4;
+		if (rand_p==0)
 		{
 			front_oil_count = 0;
 			back_oil_count = 0;
 			front_oil->position += pos_ofs;
 			back_oil->position += pos_ofs;
-		}else if (rand == 1)
+		}else if (rand_p == 1)
 		{
 			front_oil_count = 1;
 			back_oil_count = 0;
 			back_oil->position += pos_ofs;
-		}else if (rand == 2)
+		}else if (rand_p == 2)
 		{
 			back_oil_count = 1;
 			front_oil_count = 0;
